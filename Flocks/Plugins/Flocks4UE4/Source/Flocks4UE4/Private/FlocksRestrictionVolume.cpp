@@ -9,15 +9,6 @@
 void AFlocksRestrictionVolume::BeginPlay()
 {
 	Super::BeginPlay();
-
-	for (TActorIterator<AFlocksManager> ActorItr(GetWorld()); ActorItr; ++ActorItr)
-	{
-		// Same as with the Object Iterator, access the subclass instance with the * or -> operators.
-		m_flocksManager = *ActorItr;
-		m_id = m_flocksManager->RegisterRestrictionVolume(this);
-
-		break;
-	}
 }
 
 void AFlocksRestrictionVolume::NotifyActorBeginOverlap(AActor* OtherActor)

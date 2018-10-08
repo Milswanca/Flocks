@@ -18,12 +18,8 @@ public:
 	virtual void NotifyActorBeginOverlap(AActor* OtherActor) override;
 	virtual void NotifyActorEndOverlap(AActor* OtherActor) override;
 
+	virtual EVolumeType GetVolumeType() const { return EVolumeType::VT_Restriction; }
+
 protected:
 	virtual void BeginPlay() override;
-
-private:
-	UPROPERTY()
-		class AFlocksManager* m_flocksManager = nullptr;
-
-	int32 m_id = -1;
 };

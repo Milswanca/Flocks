@@ -40,15 +40,15 @@ public:
 	virtual int32 RegisterBoid(class AFlocksAIController* _controller);
 	virtual void DeregisterBoid(class AFlocksAIController* _controller);
 
-	virtual int32 RegisterFleeVolume(class AFlocksFleeVolume* _volume);
-	virtual void DeregisterFleeVolume(class AFlocksFleeVolume* _volume);
-
-	virtual int32 RegisterRestrictionVolume(class AFlocksRestrictionVolume* _volume);
-	virtual void DeregisterRestrictionVolume(class AFlocksRestrictionVolume* _volume);
+	virtual int32 RegisterVolume(class AFlocksVolume* _volume);
+	virtual void DeregisterVolume(class AFlocksVolume* _volume);
 
 	virtual void UpdateBoids(float _deltaTime);
 
 	void GetBoids(TArray<class AFlocksAIController*>& _outBoids);
+
+	void BoidChangedAcceleration(int32 _id, float _acceleration);
+	void BoidChangedMaxVelocity(int32 _id, float _maxVelocity);
 
 	void CalculateNeighbours(AFlocksAIController* _controller, TArray<AFlocksAIController*>& _outNeighbours);
 	FVector CalculateCohesion(class AFlocksAIController* _controller, TArray<class AFlocksAIController*> _neighbours);
@@ -113,14 +113,12 @@ private:
 	TSharedPtr<class FlocksComputeShaderWrapper> m_flockShader;
 
 	TArray<BoidState> m_boidData;
+	TArray<FlocksVolumeData> m_volumeData;
 	TArray<FThreadData> m_threadData;
 
 	UPROPERTY()
 	TArray<class AFlocksAIController*> m_boids;
 
 	UPROPERTY()
-		TArray<class AFlocksFleeVolume*> m_fleeVolumes;
-
-	UPROPERTY()
-		TArray<class AFlocksRestrictionVolume*> m_restrictionVolumes;
+		TArray<class AFlocksVolume*> m_flockVolumes;
 };

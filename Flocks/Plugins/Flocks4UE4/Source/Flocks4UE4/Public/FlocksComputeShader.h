@@ -21,6 +21,7 @@ END_UNIFORM_BUFFER_STRUCT(FConstantParameters)
 
 BEGIN_UNIFORM_BUFFER_STRUCT(FVariableParameters, )
 UNIFORM_MEMBER(float, DeltaSeconds)
+UNIFORM_MEMBER(int, NumVolumes)
 END_UNIFORM_BUFFER_STRUCT(FVariableParameters)
 
 typedef TUniformBufferRef<FConstantParameters> FConstantParametersRef;
@@ -47,13 +48,14 @@ public:
 	{
 		bool bShaderHasOutdatedParams = FGlobalShader::Serialize(Ar);
 
-		Ar << OutputSurface;
+		Ar << BoidData;
+		Ar << VolumeData;
 
 		return bShaderHasOutdatedParams;
 	}
 
 	//This function is required to let us bind our runtime surface to the shader using an UAV.
-	void SetShaderData(FRHICommandList& RHICmdList, FUnorderedAccessViewRHIRef OutputSurfaceUAV);
+	void SetShaderData(FRHICommandList& RHICmdList, FUnorderedAccessViewRHIRef BoidDataUAV, FUnorderedAccessViewRHIRef VolumeDataUAV);
 	//This function is required to bind our constant / uniform buffers to the shader.
 	void SetBuffers(FRHICommandList& RHICmdList, FConstantParameters& ConstantParameters, FVariableParameters& VariableParameters);
 	//This is used to clean up the buffer binds after each invocation to let them be changed and used elsewhere if needed.
@@ -61,5 +63,7 @@ public:
 
 private:
 	//This is the actual output resource that we will bind to the compute shader
-	FShaderResourceParameter OutputSurface;
+	FShaderResourceParameter BoidData;
+
+	FShaderResourceParameter VolumeData;
 };

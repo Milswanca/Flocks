@@ -30,6 +30,18 @@ public:
 	void MovedOutOfRestriction(class AFlocksVolume* _volume);
 	bool IsInRestrictionVolume() const;
 
+	UFUNCTION(BlueprintCallable, Category = "Flocks")
+		void SetAcceleration(float _acceleration);
+
+	UFUNCTION(BlueprintCallable, Category = "Flocks")
+		void SetMaxVelocity(float _maxVelocity);
+
+	UFUNCTION(BlueprintPure, Category = "Flocks")
+		float GetAcceleration() const { return maxAcceleration; }
+
+	UFUNCTION(BlueprintPure, Category = "Flocks")
+		float GetMaxVelocity() const { return maxVelocity; }
+
 	int32 GetID() const;
 
 protected:
@@ -38,6 +50,12 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flocks")
 		float rotationInterpSpeed = 5.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flocks")
+		float maxAcceleration = 6000.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flocks")
+		float maxVelocity = 4000.0f;
 
 private:
 	FVector m_desiredDirection;

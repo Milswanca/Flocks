@@ -16,18 +16,7 @@ class FLOCKS4UE4_API AFlocksFleeVolume : public AFlocksVolume
 	
 public:
 	virtual void BeginPlay() override;
+	virtual EVolumeType GetVolumeType() const { return EVolumeType::VT_Flee; }
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FleeVolume")
-		float InnerRadius = 100.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FleeVolume")
-		float OuterRadius = 2000.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FleeVolume")
-		float Falloff = 1.0f;
-
-	float GetInfluence(FVector _position) const;
-
-private:
-	class AFlocksManager* m_flocksManager = nullptr;
 };

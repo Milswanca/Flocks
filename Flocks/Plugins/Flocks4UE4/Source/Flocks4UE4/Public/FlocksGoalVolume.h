@@ -14,7 +14,8 @@ class FLOCKS4UE4_API AFlocksGoalVolume : public AFlocksVolume
 {
 	GENERATED_BODY()
 	
-	
+public:
+	virtual EVolumeType GetVolumeType() const { return EVolumeType::VT_Goal; }
 	
 	
 };

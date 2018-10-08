@@ -37,27 +37,30 @@ FlocksComputeShaderWrapper::~FlocksComputeShaderWrapper()
 {
 }
 
-void FlocksComputeShaderWrapper::Execute(const TArray<BoidState> &_currentStates, float _deltaTime)
+void FlocksComputeShaderWrapper::Execute(const TArray<BoidState> &_currentStates, const TArray<FlocksVolumeData>& _volumeData, float _deltaTime)
 {
-	ExecuteComputeShader(_currentStates, _deltaTime);
+	ExecuteComputeShader(_currentStates, _volumeData, _deltaTime);
 	m_releaseResourcesFence.BeginFence();
 	m_releaseResourcesFence.Wait();
 }
 
-void FlocksComputeShaderWrapper::ExecuteComputeShader(const TArray<BoidState> &_currentStates, float _deltaTime)
+void FlocksComputeShaderWrapper::ExecuteComputeShader(const TArray<BoidState> &_currentStates, const TArray<FlocksVolumeData>& _volumeData, float _deltaTime)
 {
 	m_variables.DeltaSeconds = _deltaTime;
-	ENQUEUE_UNIQUE_RENDER_COMMAND_THREEPARAMETER(FComputeShaderRunner,
+	m_variables.NumVolumes = _volumeData.Num();
+	m_constants.NumBoids = _currentStates.Num();
+	ENQUEUE_UNIQUE_RENDER_COMMAND_FOURPARAMETER(FComputeShaderRunner,
 		FlocksComputeShaderWrapper*, processing, this,
 		TArray<BoidState>&, result, m_states,
+		const TArray<FlocksVolumeData>&, volumes, _volumeData,
 		const TArray<BoidState>&, states, _currentStates,
 		{
-			processing->ExecuteInRenderThread(states, result);
+			processing->ExecuteInRenderThread(states, volumes, result);
 		}
 	);
 }
 
-void FlocksComputeShaderWrapper::ExecuteInRenderThread(const TArray<BoidState> &_currentStates, TArray<BoidState> &_result)
+void FlocksComputeShaderWrapper::ExecuteInRenderThread(const TArray<BoidState> &_currentStates, const TArray<FlocksVolumeData>& _volumeData, TArray<BoidState> &_result)
 {
 	check(IsInRenderingThread());
 
@@ -69,24 +72,41 @@ void FlocksComputeShaderWrapper::ExecuteInRenderThread(const TArray<BoidState> &
 		data.Add(_currentStates[i]);
 	}
 
-	FRHIResourceCreateInfo resource;
-	resource.ResourceArray = &data;
-	FStructuredBufferRHIRef buffer = RHICreateStructuredBuffer(sizeof(BoidState), sizeof(BoidState) * 2 * m_constants.NumBoids, BUF_UnorderedAccess | 0, resource);
-	FUnorderedAccessViewRHIRef uav = RHICreateUnorderedAccessView(buffer, false, false);
+	TResourceArray<FlocksVolumeData> volumes;
+	for (int i = 0; i < _volumeData.Num(); i++) {
+		volumes.Add(_volumeData[i]);
+	}
+
+	FRHIResourceCreateInfo boidDataResource;
+	boidDataResource.ResourceArray = &data;
+	FStructuredBufferRHIRef boidsBuffer = RHICreateStructuredBuffer(sizeof(BoidState), sizeof(BoidState) * 2 * m_constants.NumBoids, BUF_UnorderedAccess | 0, boidDataResource);
+	FUnorderedAccessViewRHIRef boidsUav = RHICreateUnorderedAccessView(boidsBuffer, false, false);
+
+	FRHIResourceCreateInfo volumesResource;
+	volumesResource.ResourceArray = &volumes;
+	FStructuredBufferRHIRef volumesBuffer;
+	FUnorderedAccessViewRHIRef volumesUav;
+	
+	if (volumes.Num() > 0)
+	{
+		volumesBuffer = RHICreateStructuredBuffer(sizeof(FlocksVolumeData), sizeof(FlocksVolumeData) * _volumeData.Num(), BUF_UnorderedAccess | 0, volumesResource);
+		volumesUav = RHICreateUnorderedAccessView(volumesBuffer, false, false);
+	}
+
 
 	FRHICommandListImmediate& commandList = GRHICommandList.GetImmediateCommandList();
 	TShaderMapRef<FlocksComputeShader> shader(GetGlobalShaderMap(m_featureLevel));
 	commandList.SetComputeShader(shader->GetComputeShader());
-	shader->SetShaderData(commandList, uav);
+	shader->SetShaderData(commandList, boidsUav, volumesUav);
 	shader->SetBuffers(commandList, m_constants, m_variables);
 	DispatchComputeShader(commandList, *shader, 1, m_threadNumGroupCount, 1);
 	shader->CleanupShaderData(commandList);
 
-	char* shaderData = (char*)commandList.LockStructuredBuffer(buffer, 0, sizeof(BoidState) * 2 * m_constants.NumBoids, EResourceLockMode::RLM_ReadOnly);
+	char* shaderData = (char*)commandList.LockStructuredBuffer(boidsBuffer, 0, sizeof(BoidState) * 2 * m_constants.NumBoids, EResourceLockMode::RLM_ReadOnly);
 	BoidState* p = (BoidState*)shaderData;
 	for (int32 Row = 0; Row < m_constants.NumBoids; ++Row) {
 		_result[Row] = *p;
 		p++;
 	}
-	commandList.UnlockStructuredBuffer(buffer);
+	commandList.UnlockStructuredBuffer(boidsBuffer);
 }

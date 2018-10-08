@@ -13,7 +13,8 @@ FlocksComputeShader::FlocksComputeShader(const ShaderMetaType::CompiledShaderIni
 	: FGlobalShader(Initializer)
 {
 	//This call is what lets the shader system know that the surface OutputSurface is going to be available in the shader. The second parameter is the name it will be known by in the shader
-	OutputSurface.Bind(Initializer.ParameterMap, TEXT("data"));
+	BoidData.Bind(Initializer.ParameterMap, TEXT("data"));
+	VolumeData.Bind(Initializer.ParameterMap, TEXT("volumeData"));
 }
 
 void FlocksComputeShader::ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
@@ -22,12 +23,15 @@ void FlocksComputeShader::ModifyCompilationEnvironment(const FGlobalShaderPermut
 	OutEnvironment.CompilerFlags.Add(CFLAG_StandardOptimization);
 }
 
-void FlocksComputeShader::SetShaderData(FRHICommandList& RHICmdList, FUnorderedAccessViewRHIRef OutputSurfaceUAV)
+void FlocksComputeShader::SetShaderData(FRHICommandList& RHICmdList, FUnorderedAccessViewRHIRef BoidDataUAV, FUnorderedAccessViewRHIRef VolumeDataUAV)
 {
 	FComputeShaderRHIParamRef ComputeShaderRHI = GetComputeShader();
 
-	if (OutputSurface.IsBound())
-		RHICmdList.SetUAVParameter(ComputeShaderRHI, OutputSurface.GetBaseIndex(), OutputSurfaceUAV);
+	if (BoidData.IsBound())
+		RHICmdList.SetUAVParameter(ComputeShaderRHI, BoidData.GetBaseIndex(), BoidDataUAV);
+
+	if (VolumeData.IsBound())
+		RHICmdList.SetUAVParameter(ComputeShaderRHI, VolumeData.GetBaseIndex(), VolumeDataUAV);
 }
 
 void FlocksComputeShader::SetBuffers(FRHICommandList& RHICmdList, FConstantParameters& ConstantParameters, FVariableParameters& VariableParameters)
@@ -47,8 +51,11 @@ void FlocksComputeShader::CleanupShaderData(FRHICommandList& RHICmdList)
 {
 	FComputeShaderRHIParamRef ComputeShaderRHI = GetComputeShader();
 
-	if (OutputSurface.IsBound())
-		RHICmdList.SetUAVParameter(ComputeShaderRHI, OutputSurface.GetBaseIndex(), FUnorderedAccessViewRHIRef());
+	if (BoidData.IsBound())
+		RHICmdList.SetUAVParameter(ComputeShaderRHI, BoidData.GetBaseIndex(), FUnorderedAccessViewRHIRef());
+
+	if (VolumeData.IsBound())
+		RHICmdList.SetUAVParameter(ComputeShaderRHI, VolumeData.GetBaseIndex(), FUnorderedAccessViewRHIRef());
 }
 
 IMPLEMENT_SHADER_TYPE(, FlocksComputeShader, TEXT("/Plugin/Flocks4UE4/Private/ComputeFishShader.usf"), TEXT("VS_test"), SF_Compute);

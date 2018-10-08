@@ -4,7 +4,7 @@
 #include "FlocksAIController.h"
 #include "Runtime/Engine/Public/DrawDebugHelpers.h"
 #include "FlocksManagerThread.h"
-#include "FlocksFleeVolume.h"
+#include "FlocksVolume.h"
 #include "FlocksRestrictionVolume.h"
 #include "FlocksComputeShaderWrapper.h"
 
@@ -15,7 +15,6 @@ void AFlocksManager::BeginPlay()
 	if (computeType == ComputeType::CT_GPU)
 	{
 		m_flockShader = MakeShared<FlocksComputeShaderWrapper>(1000, cohesionRadius, separationRadius, alignmentRadius, cohesionWeight, separationWeight, alignmentWeight, maxVelocity, maxAcceleration, GetWorld()->Scene->GetFeatureLevel());
-		m_boidData = m_flockShader->GetStates();
 	}
 
 	//if (computeType == ComputeType::CT_MultiThreaded)
@@ -29,6 +28,20 @@ void AFlocksManager::BeginPlay()
 	//}
 }
 
+void AFlocksManager::BoidChangedAcceleration(int32 _id, float _acceleration)
+{
+	if (!m_boidData.IsValidIndex(_id)) { return; }
+
+	m_boidData[_id].AccelerationSpeed = _acceleration;
+}
+
+void AFlocksManager::BoidChangedMaxVelocity(int32 _id, float _maxVelocity)
+{
+	if (!m_boidData.IsValidIndex(_id)) { return; }
+
+	m_boidData[_id].MaxVelocity = _maxVelocity;
+}
+
 int32 AFlocksManager::RegisterBoid(AFlocksAIController* _controller)
 {
 	if (!_controller || !_controller->GetPawn()) { return -1; }
@@ -36,7 +49,7 @@ int32 AFlocksManager::RegisterBoid(AFlocksAIController* _controller)
 	m_boids.AddUnique(_controller);
 	
 	int32 id = m_boids.Num() - 1;
-	m_boidData.Add(BoidState(id, _controller->GetPawn()->GetActorLocation(), _controller->GetDirection()));
+	m_boidData.Add(BoidState(id, _controller->GetAcceleration(), _controller->GetMaxVelocity(), _controller->GetPawn()->GetActorLocation(), _controller->GetDirection()));
 
 	//if (computeType == ComputeType::CT_MultiThreaded)
 	//{
@@ -58,26 +71,19 @@ void AFlocksManager::DeregisterBoid(AFlocksAIController* _controller)
 	m_boids.Remove(_controller);
 }
 
-int32 AFlocksManager::RegisterFleeVolume(class AFlocksFleeVolume* _volume)
+int32 AFlocksManager::RegisterVolume(class AFlocksVolume* _volume)
 {
-	m_fleeVolumes.AddUnique(_volume);
-	return m_fleeVolumes.Num() - 1;
+	m_flockVolumes.AddUnique(_volume);
+
+	int32 id = m_flockVolumes.Num() - 1;
+	m_volumeData.Add(FlocksVolumeData(id, _volume->GetActorLocation(), _volume->GetInnerRadius(), _volume->GetOuterRadius(), _volume->GetFalloff(), (int32)_volume->GetVolumeType()));
+
+	return m_flockVolumes.Num() - 1;
 }
 
-void AFlocksManager::DeregisterFleeVolume(class AFlocksFleeVolume* _volume)
+void AFlocksManager::DeregisterVolume(class AFlocksVolume* _volume)
 {
-	m_fleeVolumes.Remove(_volume);
-}
-
-int32 AFlocksManager::RegisterRestrictionVolume(class AFlocksRestrictionVolume* _volume)
-{
-	m_restrictionVolumes.AddUnique(_volume);
-	return m_restrictionVolumes.Num() - 1;
-}
-
-void AFlocksManager::DeregisterRestrictionVolume(class AFlocksRestrictionVolume* _volume)
-{
-	m_restrictionVolumes.Remove(_volume);
+	m_flockVolumes.Remove(_volume);
 }
 
 void AFlocksManager::UpdateBoids(float _deltaTime)
@@ -118,7 +124,7 @@ void AFlocksManager::UpdateBoids(float _deltaTime)
 		{
 			if (m_flockShader)
 			{
-				m_flockShader->Execute(m_boidData, _deltaTime);
+				m_flockShader->Execute(m_boidData, m_volumeData, _deltaTime);
 				TArray<BoidState> previousState = m_boidData;
 				m_boidData = m_flockShader->GetStates();
 
@@ -215,20 +221,29 @@ FVector AFlocksManager::CalculateTowardsZero(class AFlocksAIController* _control
 
 FVector AFlocksManager::CalculateFlee(class AFlocksAIController* _controller)
 {
-	if (m_fleeVolumes.Num() <= 0) { return FVector::ZeroVector; }
+	if (m_flockVolumes.Num() <= 0) { return FVector::ZeroVector; }
 
 	FVector flee = FVector::ZeroVector;
+	int32 numFlees = 0;
 
-	for (AFlocksFleeVolume* volume : m_fleeVolumes)
+	for (AFlocksVolume* volume : m_flockVolumes)
 	{
+		if (volume->GetVolumeType() != EVolumeType::VT_Flee) { continue; }
+
 		FVector newFlee = _controller->GetPawn()->GetActorLocation() - volume->GetActorLocation();
 		newFlee.Normalize();
 		newFlee *= volume->GetInfluence(_controller->GetPawn()->GetActorLocation());
+		numFlees++;
 
 		flee += newFlee;
 	}
 
-	flee /= m_fleeVolumes.Num();
+	if (numFlees == 0)
+	{
+		return FVector::ZeroVector;
+	}
+
+	flee /= numFlees;
 
 	if (flee.SizeSquared() < 0.1f)
 	{
@@ -242,25 +257,37 @@ FVector AFlocksManager::CalculateFlee(class AFlocksAIController* _controller)
 
 FVector AFlocksManager::CalculateRestriction(class AFlocksAIController* _controller)
 {
-	if (m_fleeVolumes.Num() <= 0 || !_controller->IsInRestrictionVolume()) { return FVector::ZeroVector; }
+	if (m_flockVolumes.Num() <= 0) { return FVector::ZeroVector; }
 
-	AFlocksRestrictionVolume* restriction = nullptr;
-	float closest = MAX_FLT;
+	FVector restriction = FVector::ZeroVector;
+	int32 numRestrictions = 0;
 
-	for (AFlocksRestrictionVolume* volume : m_restrictionVolumes)
+	for (AFlocksVolume* volume : m_flockVolumes)
 	{
-		float dist = FVector::DistSquared(_controller->GetPawn()->GetActorLocation(), volume->GetActorLocation());
+		if (volume->GetVolumeType() != EVolumeType::VT_Restriction) { continue; }
 
-		if (dist < closest)
-		{
-			restriction = volume;
-			closest = dist;
-		}
+		FVector newRest = _controller->GetPawn()->GetActorLocation() - volume->GetActorLocation();
+		newRest.Normalize();
+		newRest *= volume->GetInfluence(_controller->GetPawn()->GetActorLocation());
+		numRestrictions++;
+
+		restriction += newRest;
 	}
 
-	FVector retRestriction = restriction->GetActorLocation() - _controller->GetPawn()->GetActorLocation();
-	retRestriction.Normalize();
-	return retRestriction * restrictionWeight;
+	if (numRestrictions == 0)
+	{
+		return FVector::ZeroVector;
+	}
+
+	restriction /= numRestrictions;
+
+	if (restriction.SizeSquared() < 0.1f)
+	{
+		return FVector::ZeroVector;
+	}
+
+	restriction.Normalize();
+	return restriction * restrictionWeight;
 }
 
 //Killing the thread for example in EndPlay() or BeginDestroy()

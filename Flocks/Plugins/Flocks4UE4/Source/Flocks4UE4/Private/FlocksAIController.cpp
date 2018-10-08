@@ -81,3 +81,23 @@ bool AFlocksAIController::IsInRestrictionVolume() const
 {
 	return m_restrictionVolumes.Num() > 0;
 }
+
+void AFlocksAIController::SetAcceleration(float _acceleration)
+{
+	maxAcceleration = _acceleration;
+
+	if (m_flocksManager)
+	{
+		m_flocksManager->BoidChangedAcceleration(m_id, maxAcceleration);
+	}
+}
+
+void AFlocksAIController::SetMaxVelocity(float _maxVelocity)
+{
+	maxVelocity = _maxVelocity;
+
+	if (m_flocksManager)
+	{
+		m_flocksManager->BoidChangedMaxVelocity(m_id, _maxVelocity);
+	}
+}

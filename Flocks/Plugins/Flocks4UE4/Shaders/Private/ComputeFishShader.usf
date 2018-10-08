@@ -2,9 +2,20 @@
 
 struct BoidData{
 	int instanceId;
+	float accelerationSpeed;
+	float maxVelocity;
 	float3 velocity;
 	float3 position;
 	float3 acceleration;
+};
+
+struct VolumeData{
+	int instanceId;
+	float3 position;
+	float innerRadius;
+	float outerRadius;
+	float falloff;
+	int volumeType;
 };
 
 float getDistance(float3 v1, float3 v2) {
@@ -12,6 +23,7 @@ float getDistance(float3 v1, float3 v2) {
 }
 
 RWStructuredBuffer<BoidData> data;
+RWStructuredBuffer<VolumeData> volumeData;
 
 [numthreads(1, 128, 1)]
 void VS_test(uint3 ThreadId : SV_DispatchThreadID)
@@ -62,6 +74,28 @@ void VS_test(uint3 ThreadId : SV_DispatchThreadID)
 			}
 		}
 
+		float closestDist = 100000000;
+		int closestRest = -1;
+
+		for(int j = 0; j < FlocksVariable.NumVolumes; ++j)
+		{
+			float d = getDistance(volumeData[j].position, currentState.position);
+			if(d < closestDist)
+			{
+				closestDist = d;
+				closestRest = j;
+			}
+		}
+
+		float3 steerRestriction = float3(0, 0, 0);
+		float restriction = 0.0f;
+		if(closestRest > -1 && closestDist > volumeData[closestRest].outerRadius)
+		{
+			restriction = 1.0f;
+			steerRestriction = volumeData[closestRest].position - currentState.position;
+			steerRestriction = normalize(steerRestriction);
+		}
+
 		if (steerCohesionCnt != 0) {
 			steerCohesion = (steerCohesion / steerCohesionCnt - currentState.position);
 			steerCohesion = normalize(steerCohesion);
@@ -77,10 +111,10 @@ void VS_test(uint3 ThreadId : SV_DispatchThreadID)
 			steerAlignment = normalize(steerAlignment);
 		}
 	
-		newState.acceleration = (steerCohesion * cohesion + steerSeparation * separation + steerAlignment * alignment) * FlocksConstant.Acceleration;
+		newState.acceleration = (steerCohesion * cohesion + steerSeparation * separation + steerAlignment * alignment + steerRestriction * restriction) * currentState.accelerationSpeed;
 	
 		newState.velocity += newState.acceleration * FlocksVariable.DeltaSeconds;
-		newState.velocity = clamp(newState.velocity, -FlocksConstant.MaxVelocity, FlocksConstant.MaxVelocity);
+		newState.velocity = clamp(newState.velocity, -currentState.maxVelocity, currentState.maxVelocity);
 
 		newState.position += newState.velocity * FlocksVariable.DeltaSeconds;
 	
