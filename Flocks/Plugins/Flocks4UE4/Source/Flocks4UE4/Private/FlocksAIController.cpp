@@ -9,95 +9,25 @@ void AFlocksAIController::BeginPlay()
 {
 	Super::BeginPlay();
 
-	SetDirection(UKismetMathLibrary::RandomUnitVector());
-}
-
-void AFlocksAIController::Possess(APawn* InPawn)
-{
-	Super::Possess(InPawn);
-
-	for (TActorIterator<AFlocksManager> ActorItr(GetWorld()); ActorItr; ++ActorItr)
+	if (Role == ROLE_Authority)
 	{
-		// Same as with the Object Iterator, access the subclass instance with the * or -> operators.
-		m_flocksManager = *ActorItr;
-		m_id = m_flocksManager->RegisterBoid(this);
+		FActorSpawnParameters spawnInfo;
+		spawnInfo.Owner = this;
+		spawnInfo.Instigator = Instigator;
+		spawnInfo.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
-		break;
+		APawn* myPawn = GetWorld()->SpawnActor<APawn>(PawnClass, FVector::ZeroVector, FRotator::ZeroRotator, spawnInfo);
+		Possess(myPawn);
 	}
 }
 
-void AFlocksAIController::Tick(float _deltaTime)
+void AFlocksAIController::SetID(int32 _id, class AFlocksManager* _manager)
 {
-	Super::Tick(_deltaTime);
-
-	if (GetPawn())
-	{
-		m_direction = FMath::VInterpTo(m_direction, m_desiredDirection, _deltaTime, rotationInterpSpeed);
-		GetPawn()->AddMovementInput(m_direction);
-	}
-}
-
-float AFlocksAIController::GetNeighbourDistanceSqr() const
-{
-	return neighbourDist * neighbourDist;
-}
-
-void AFlocksAIController::EndPlay(const EEndPlayReason::Type EndPlayReason)
-{
-	Super::EndPlay(EndPlayReason);
-
-	if (m_flocksManager)
-	{
-		m_flocksManager->DeregisterBoid(this);
-	}
-}
-
-void AFlocksAIController::SetDirection(FVector _direction)
-{
-	m_desiredDirection = _direction;
-}
-
-FVector AFlocksAIController::GetDirection() const
-{
-	return m_desiredDirection;
+	m_id = _id;
+	m_flocksManager = _manager;
 }
 
 int32 AFlocksAIController::GetID() const
 {
 	return m_id;
-}
-
-void AFlocksAIController::MovedIntoRestriction(AFlocksVolume* _volume)
-{
-	m_restrictionVolumes.AddUnique(_volume);
-}
-
-void AFlocksAIController::MovedOutOfRestriction(AFlocksVolume* _volume)
-{
-	m_restrictionVolumes.Remove(_volume);
-}
-
-bool AFlocksAIController::IsInRestrictionVolume() const
-{
-	return m_restrictionVolumes.Num() > 0;
-}
-
-void AFlocksAIController::SetAcceleration(float _acceleration)
-{
-	maxAcceleration = _acceleration;
-
-	if (m_flocksManager)
-	{
-		m_flocksManager->BoidChangedAcceleration(m_id, maxAcceleration);
-	}
-}
-
-void AFlocksAIController::SetMaxVelocity(float _maxVelocity)
-{
-	maxVelocity = _maxVelocity;
-
-	if (m_flocksManager)
-	{
-		m_flocksManager->BoidChangedMaxVelocity(m_id, _maxVelocity);
-	}
 }

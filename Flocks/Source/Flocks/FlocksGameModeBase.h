@@ -17,17 +17,4 @@ class FLOCKS_API AFlocksGameModeBase : public AGameModeBase
 	
 public:
 	AFlocksGameModeBase();
-	virtual void InitGameState() override;
-	virtual void Tick(float _deltaTime) override;
-
-	UFUNCTION(BlueprintPure, Category = "Flocks")
-		class AFlocksManager* GetFlocksManager() const;
-
-protected:
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Flocks")
-		TSubclassOf<AFlocksManager> flocksManagerClass;
-
-private:
-	UPROPERTY()
-		class AFlocksManager* m_flocksManager;
 };

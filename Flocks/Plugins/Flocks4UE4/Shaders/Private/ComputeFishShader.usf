@@ -2,6 +2,9 @@
 
 struct BoidData{
 	int instanceId;
+	int groupIdLocal;
+	int groupIdGlobal;
+	int staticMeshId;
 	float accelerationSpeed;
 	float maxVelocity;
 	float3 velocity;
@@ -18,25 +21,50 @@ struct VolumeData{
 	int volumeType;
 };
 
+struct FlockData{
+	int numBoids;
+};
+
 float getDistance(float3 v1, float3 v2) {
 	return sqrt((v2[0]-v1[0])*(v2[0]-v1[0]) + (v2[1]-v1[1])*(v2[1]-v1[1]) + (v2[2]-v1[2])*(v2[2]-v1[2]));
 }
 
+float getInfluence(float3 _position, float3 _volumePos, float _innerRadius, float _outerRadius, float _falloff)
+{
+	float distanceFromEpicenter = getDistance(_position, _volumePos);
+
+	float validatedInnerRadius = max(0.0f, _innerRadius);
+	float validatedOuterRadius = max(_outerRadius, validatedInnerRadius);
+	float validatedDist = max(0.f, distanceFromEpicenter);
+
+	if (validatedDist >= validatedOuterRadius)
+	{
+		// outside the radius, no effect
+		return 0.0f;
+	}
+
+	if ((_falloff == 0.f) || (validatedDist <= validatedInnerRadius))
+	{
+		// no falloff or inside inner radius means full effect
+		return 1.0f;
+	}
+
+	// calculate the interpolated scale
+	float influence = 1.f - ((validatedDist - validatedInnerRadius) / (validatedOuterRadius - validatedInnerRadius));
+	influence = pow(influence, _falloff);
+
+	return influence;
+}
+
 RWStructuredBuffer<BoidData> data;
 RWStructuredBuffer<VolumeData> volumeData;
+RWStructuredBuffer<FlockData> flockData;
 
 [numthreads(1, 128, 1)]
 void VS_test(uint3 ThreadId : SV_DispatchThreadID)
 {		
-	int numBoids = FlocksConstant.NumBoids;
+	int numBoids = flockData[0].numBoids;
 	int calculationsPerThread = FlocksConstant.CalculationsPerThread;
-
-	float cohesionRadius = FlocksConstant.CohesionRadius;
-	float alignmentRadius = FlocksConstant.AlignmentRadius;
-	float separationRadius = FlocksConstant.SeparationRadius;
-	float cohesion = FlocksConstant.Cohesion;
-	float alignment = FlocksConstant.Alignment;
-	float separation = FlocksConstant.Separation;
 	
 	for (int iteration = 0; iteration < calculationsPerThread; iteration++) {		
 		int currentThreadId = calculationsPerThread * ThreadId.y + iteration;
@@ -48,15 +76,32 @@ void VS_test(uint3 ThreadId : SV_DispatchThreadID)
 		BoidData currentState = data[currentThreadId + numBoids];
 		BoidData newState = data[currentThreadId];
 	
-		float3 steerCohesion = {0.0f, 0.0f, 0.0f};
-		float3 steerSeparation = {0.0f, 0.0f, 0.0f};
-		float3 steerAlignment = {0.0f, 0.0f, 0.0f};
-	
+		int currentGroup = currentState.groupIdGlobal;
+
+		float cohesionRadius = FlocksGroups.CohesionRadius[currentGroup];
+		float alignmentRadius = FlocksGroups.AlignmentRadius[currentGroup];
+		float separationRadius = FlocksGroups.SeparationRadius[currentGroup];
+		float cohesion = FlocksGroups.Cohesion[currentGroup];
+		float alignment = FlocksGroups.Alignment[currentGroup];
+		float separation = FlocksGroups.Separation[currentGroup];
+		float restriction = FlocksGroups.Restriction[currentGroup];
+		float flee = FlocksGroups.Flee[currentGroup];
+		float goal = FlocksGroups.Goal[currentGroup];
+
+		float3 steerCohesion = { 0.0f, 0.0f, 0.0f };
+		float3 steerSeparation = { 0.0f, 0.0f, 0.0f };
+		float3 steerAlignment = { 0.0f, 0.0f, 0.0f };
+		float3 steerFlee = { 0.0f, 0.0f, 0.0f };
+		float3 steerGoal = { 0.0f, 0.0f, 0.0f };
+
 		float steerCohesionCnt = 0.0f;
 		float steerSeparationCnt = 0.0f;
 		float steerAlignmentCnt = 0.0f;
+		float steerFleeCnt = 0.0f;
+		float steerGoalCnt = 0.0f;
 	
-		for (int i = numBoids; i < 2 * numBoids; i++) {
+		for (int i = numBoids; i < 2 * numBoids; i++) 
+		{
 			if (i != currentId) {
 				float d = getDistance(data[i].position, currentState.position);
 				if (d < cohesionRadius) {
@@ -79,21 +124,62 @@ void VS_test(uint3 ThreadId : SV_DispatchThreadID)
 
 		for(int j = 0; j < FlocksVariable.NumVolumes; ++j)
 		{
-			float d = getDistance(volumeData[j].position, currentState.position);
-			if(d < closestDist)
+			switch(volumeData[j].volumeType)
 			{
-				closestDist = d;
-				closestRest = j;
+				case 0:
+				{
+					float d = getDistance(volumeData[j].position, currentState.position);
+					if(d < closestDist)
+					{
+						closestDist = d;
+						closestRest = j;
+					}
+				}
+				break;
+
+				case 1:
+				{
+					float inf = getInfluence(currentState.position, volumeData[j].position, volumeData[j].innerRadius, volumeData[j].outerRadius, volumeData[j].falloff);
+
+					if(inf > 0.0f)
+					{
+						steerFlee -= (volumeData[j].position - currentState.position) * getInfluence(currentState.position, volumeData[j].position, volumeData[j].innerRadius, volumeData[j].outerRadius, volumeData[j].falloff);
+						steerFleeCnt++;
+					}
+				}
+				break;
+
+				case 2:
+				{
+					float inf = 1.0f - getInfluence(currentState.position, volumeData[j].position, volumeData[j].innerRadius, volumeData[j].outerRadius, volumeData[j].falloff);
+
+					if(inf > 0.0f)
+					{
+						steerGoal += (volumeData[j].position - currentState.position) * inf;
+						steerGoalCnt++;
+					}
+				}
+				break;
 			}
 		}
 
 		float3 steerRestriction = float3(0, 0, 0);
-		float restriction = 0.0f;
 		if(closestRest > -1 && closestDist > volumeData[closestRest].outerRadius)
 		{
-			restriction = 1.0f;
 			steerRestriction = volumeData[closestRest].position - currentState.position;
 			steerRestriction = normalize(steerRestriction);
+		}
+
+		if(steerFleeCnt != 0)
+		{
+			steerFlee /= steerFleeCnt;
+			steerFlee = normalize(steerFlee);
+		}
+
+		if(steerGoalCnt != 0)
+		{
+			steerGoal /= steerGoalCnt;
+			steerGoal = normalize(steerGoal);
 		}
 
 		if (steerCohesionCnt != 0) {
@@ -111,7 +197,7 @@ void VS_test(uint3 ThreadId : SV_DispatchThreadID)
 			steerAlignment = normalize(steerAlignment);
 		}
 	
-		newState.acceleration = (steerCohesion * cohesion + steerSeparation * separation + steerAlignment * alignment + steerRestriction * restriction) * currentState.accelerationSpeed;
+		newState.acceleration = (steerGoal * goal + steerFlee * flee + steerCohesion * cohesion + steerSeparation * separation + steerAlignment * alignment + steerRestriction * restriction) * currentState.accelerationSpeed;
 	
 		newState.velocity += newState.acceleration * FlocksVariable.DeltaSeconds;
 		newState.velocity = clamp(newState.velocity, -currentState.maxVelocity, currentState.maxVelocity);

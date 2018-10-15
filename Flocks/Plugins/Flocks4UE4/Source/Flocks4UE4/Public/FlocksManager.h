@@ -4,7 +4,9 @@
 
 #include "CoreMinimal.h"
 #include "FlocksManagerThread.h"
+#include "FlocksAIController.h"
 #include "GameFramework/Actor.h"
+#include "FlocksPawn.h"
 #include "FlocksComputeShaderWrapper.h"
 #include "FlocksManager.generated.h"
 
@@ -16,14 +18,68 @@ enum class ComputeType : uint8
 	CT_GPU
 };
 
-struct FThreadData
+UENUM(BlueprintType)
+enum class FlockType : uint8
 {
-public:
-	FThreadData() {}
+	FT_Flying,
+	FT_Herding
+};
 
-	class FFlocksManagerThread* Thread = nullptr;
-	TArray<FBoidComputedData> ComputedData;
-	TArray<int> BoidsToCompute;
+USTRUCT(BlueprintType)
+struct FSpawnData
+{
+	GENERATED_USTRUCT_BODY()
+
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flocks")
+		FGroupData GroupData;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Flocks")
+		float SpawnRadius;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Flocks")
+		float MinSpeed;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Flocks")
+		float MaxSpeed;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Flocks")
+		FVector Scale = FVector::OneVector;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Flocks")
+		FRotator RotOffset;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flocks")
+		int32 NumSpawns = 0;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Flocks")
+		bool bUseInstancedMesh = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flocks", meta = (EditCondition = "!bUseInstancedMesh"))
+		TSubclassOf<AFlocksAIController> ControllerClass;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flocks", meta = (EditCondition = "bUseInstancedMesh"))
+		class UStaticMesh* FishMesh = nullptr;
+
+	UPROPERTY()
+		class AFlocksInstancedMeshActor* InstancedMesh;
+
+	UPROPERTY()
+		TArray<int32> FishIDs;
+
+	UPROPERTY()
+		TArray<class AFlocksAIController*> FlocksControllers;
+
+};
+
+USTRUCT(BlueprintType)
+struct FSpawnGroup
+{
+	GENERATED_USTRUCT_BODY()
+
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flocks")
+		TArray<FSpawnData> SpawnData;
 };
 
 /**
@@ -35,90 +91,51 @@ class FLOCKS4UE4_API AFlocksManager : public AActor
 	GENERATED_BODY()
 
 public:
+	AFlocksManager();
 	virtual void BeginPlay() override;
+	virtual void Tick(float _deltaTime) override;
 
-	virtual int32 RegisterBoid(class AFlocksAIController* _controller);
-	virtual void DeregisterBoid(class AFlocksAIController* _controller);
+	virtual void DeregisterBoid(int32 _boidId);
 
 	virtual int32 RegisterVolume(class AFlocksVolume* _volume);
 	virtual void DeregisterVolume(class AFlocksVolume* _volume);
 
-	virtual void UpdateBoids(float _deltaTime);
-
-	void GetBoids(TArray<class AFlocksAIController*>& _outBoids);
+	UFUNCTION(BlueprintPure, Category = "Flocks")
+		FVector GetBoidPosition(int32 _boidID);
 
 	void BoidChangedAcceleration(int32 _id, float _acceleration);
 	void BoidChangedMaxVelocity(int32 _id, float _maxVelocity);
 
-	void CalculateNeighbours(AFlocksAIController* _controller, TArray<AFlocksAIController*>& _outNeighbours);
-	FVector CalculateCohesion(class AFlocksAIController* _controller, TArray<class AFlocksAIController*> _neighbours);
-	FVector CalculateSeparation(class AFlocksAIController* _controller, TArray<class AFlocksAIController*> _neighbours);
-	FVector CalculateAlignment(class AFlocksAIController* _controller, TArray<class AFlocksAIController*> _neighbours);
-	FVector CalculateTowardsZero(class AFlocksAIController* _controller);
-	FVector CalculateFlee(class AFlocksAIController* _controller);
-	FVector CalculateRestriction(class AFlocksAIController* _controller);
+	void FlockVolumeMoved(int32 _volumeID, FVector _newPosition);
+
+protected:
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Flocks")
+		FSpawnGroup SpawnGroup;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flocks")
-		ComputeType computeType;
+		ComputeType ComputeType;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flocks")
-		float cohesionRadius = 1.0f;
+		FlockType FlockType;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flocks")
-		float separationRadius = 1.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flocks")
-		float alignmentRadius = 1.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flocks")
-		float maxAcceleration = 100.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flocks")
-		float maxVelocity = 100.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flocks")
-		FVector zeroLocation;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flocks")
-		float cohesionWeight = 1.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flocks")
-		float separationWeight = 1.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flocks")
-		float alignmentWeight = 1.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flocks")
-		float toZeroWeight = 1.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flocks")
-		float fleeWeight = 1.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flocks")
-		float restrictionWeight = 1.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flocks")
-		int32 numThreads = 4;
-
-	//Killing the thread for example in EndPlay() or BeginDestroy()
-	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
-	virtual void BeginDestroy() override;
+	virtual void UpdateGPU(float _deltaTime);
+	virtual void UpdateCPU(float _deltaTime);
+	virtual void UpdateFromStates(float _deltaTime);
 
 private:
-	bool initted = false;
-	int initCount = 0;
-
-	int32 m_currentThread = 0;
-
 	TSharedPtr<class FlocksComputeShaderWrapper> m_flockShader;
 
 	TArray<BoidState> m_boidData;
 	TArray<FlocksVolumeData> m_volumeData;
-	TArray<FThreadData> m_threadData;
+	TArray<FSpawnData> m_groups;
 
-	UPROPERTY()
-	TArray<class AFlocksAIController*> m_boids;
+	static FVector ToVector(float _fromArr[3])
+	{
+		return FVector(_fromArr[0], _fromArr[1], _fromArr[2]);
+	}
 
 	UPROPERTY()
 		TArray<class AFlocksVolume*> m_flockVolumes;
+
+	static int32 currentGroupID;
 };

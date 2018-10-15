@@ -45,10 +45,13 @@ public:
 	float GetFalloff() const { return Falloff; }
 	virtual EVolumeType GetVolumeType() const { return EVolumeType::VT_Flee; }
 
-	float GetInfluence(FVector _position) const;
+	float GetVolumeInfluence(FVector _position) const;
+
+	static float GetInfluence(FVector _position, FVector _volumePos, float _innerRadius, float _outerRadius, float _falloff);
 
 private:
 	class AFlocksManager* m_flocksManager = nullptr;
 	int32 m_id = -1;
 	
+	FVector m_lastPosition = FVector::ZeroVector;
 };

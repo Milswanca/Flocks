@@ -14,31 +14,9 @@ void AFlocksRestrictionVolume::BeginPlay()
 void AFlocksRestrictionVolume::NotifyActorBeginOverlap(AActor* OtherActor)
 {
 	Super::NotifyActorBeginOverlap(OtherActor);
-
-	if (APawn* pawn = Cast<APawn>(OtherActor))
-	{
-		if (pawn->GetController())
-		{
-			if (AFlocksAIController* controller = Cast<AFlocksAIController>(pawn->GetController()))
-			{
-				controller->MovedIntoRestriction(this);
-			}
-		}
-	}
 }
 
 void AFlocksRestrictionVolume::NotifyActorEndOverlap(AActor* OtherActor)
 {
 	Super::NotifyActorEndOverlap(OtherActor);
-
-	if (APawn* pawn = Cast<APawn>(OtherActor))
-	{
-		if (pawn->GetController())
-		{
-			if (AFlocksAIController* controller = Cast<AFlocksAIController>(pawn->GetController()))
-			{
-				controller->MovedOutOfRestriction(this);
-			}
-		}
-	}
 }

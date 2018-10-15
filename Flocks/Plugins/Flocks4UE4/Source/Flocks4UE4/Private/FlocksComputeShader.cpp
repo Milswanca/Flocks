@@ -8,12 +8,14 @@
 
 IMPLEMENT_UNIFORM_BUFFER_STRUCT(FConstantParameters, TEXT("FlocksConstant"))
 IMPLEMENT_UNIFORM_BUFFER_STRUCT(FVariableParameters, TEXT("FlocksVariable"))
+IMPLEMENT_UNIFORM_BUFFER_STRUCT(FGroupDataParameters, TEXT("FlocksGroups"))
 
 FlocksComputeShader::FlocksComputeShader(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 	: FGlobalShader(Initializer)
 {
 	//This call is what lets the shader system know that the surface OutputSurface is going to be available in the shader. The second parameter is the name it will be known by in the shader
 	BoidData.Bind(Initializer.ParameterMap, TEXT("data"));
+	ShaderData.Bind(Initializer.ParameterMap, TEXT("flockData"));
 	VolumeData.Bind(Initializer.ParameterMap, TEXT("volumeData"));
 }
 
@@ -23,7 +25,7 @@ void FlocksComputeShader::ModifyCompilationEnvironment(const FGlobalShaderPermut
 	OutEnvironment.CompilerFlags.Add(CFLAG_StandardOptimization);
 }
 
-void FlocksComputeShader::SetShaderData(FRHICommandList& RHICmdList, FUnorderedAccessViewRHIRef BoidDataUAV, FUnorderedAccessViewRHIRef VolumeDataUAV)
+void FlocksComputeShader::SetShaderData(FRHICommandList& RHICmdList, FUnorderedAccessViewRHIRef ShaderDataUAV, FUnorderedAccessViewRHIRef BoidDataUAV, FUnorderedAccessViewRHIRef VolumeDataUAV)
 {
 	FComputeShaderRHIParamRef ComputeShaderRHI = GetComputeShader();
 
@@ -32,18 +34,24 @@ void FlocksComputeShader::SetShaderData(FRHICommandList& RHICmdList, FUnorderedA
 
 	if (VolumeData.IsBound())
 		RHICmdList.SetUAVParameter(ComputeShaderRHI, VolumeData.GetBaseIndex(), VolumeDataUAV);
+
+	if (ShaderData.IsBound())
+		RHICmdList.SetUAVParameter(ComputeShaderRHI, ShaderData.GetBaseIndex(), ShaderDataUAV);
 }
 
-void FlocksComputeShader::SetBuffers(FRHICommandList& RHICmdList, FConstantParameters& ConstantParameters, FVariableParameters& VariableParameters)
+void FlocksComputeShader::SetBuffers(FRHICommandList& RHICmdList, FGroupDataParameters& GroupDataParamters, FConstantParameters& ConstantParameters, FVariableParameters& VariableParameters)
 {
 	FConstantParametersRef ConstantParametersBuffer;
 	FVariableParametersRef VariableParametersBuffer;
+	FGroupDataParametersRef GroupDataParametersBuffer;
 
 	ConstantParametersBuffer = FConstantParametersRef::CreateUniformBufferImmediate(ConstantParameters, UniformBuffer_SingleDraw);
 	VariableParametersBuffer = FVariableParametersRef::CreateUniformBufferImmediate(VariableParameters, UniformBuffer_SingleDraw);
+	GroupDataParametersBuffer = FGroupDataParametersRef::CreateUniformBufferImmediate(GroupDataParamters, UniformBuffer_SingleDraw);
 
 	SetUniformBufferParameter(RHICmdList, GetComputeShader(), GetUniformBufferParameter<FConstantParameters>(), ConstantParametersBuffer);
 	SetUniformBufferParameter(RHICmdList, GetComputeShader(), GetUniformBufferParameter<FVariableParameters>(), VariableParametersBuffer);
+	SetUniformBufferParameter(RHICmdList, GetComputeShader(), GetUniformBufferParameter<FGroupDataParameters>(), GroupDataParametersBuffer);
 }
 
 /* Unbinds buffers that will be used elsewhere */
@@ -56,6 +64,9 @@ void FlocksComputeShader::CleanupShaderData(FRHICommandList& RHICmdList)
 
 	if (VolumeData.IsBound())
 		RHICmdList.SetUAVParameter(ComputeShaderRHI, VolumeData.GetBaseIndex(), FUnorderedAccessViewRHIRef());
+
+	if (ShaderData.IsBound())
+		RHICmdList.SetUAVParameter(ComputeShaderRHI, ShaderData.GetBaseIndex(), FUnorderedAccessViewRHIRef());
 }
 
 IMPLEMENT_SHADER_TYPE(, FlocksComputeShader, TEXT("/Plugin/Flocks4UE4/Private/ComputeFishShader.usf"), TEXT("VS_test"), SF_Compute);
